@@ -215,10 +215,15 @@ If you want the log file for each instance, you can set the `--logging` to `true
 
 Similar to the above, but do the following changes:
 
-1. Change the DB host name in the `evaluation/src/db_utils.py` file from `livesqlbench_postgresql` to `livesqlbench_postgresql_base_full`.
-2. Change the databaes metafiles and livesqlbench_data.jsonl to the full version from [huggingface](https://huggingface.co/datasets/birdsql/livesqlbench-base-full-v1).
-3. Using the new generated prompt for Full version to get LLM outputs.
-4. Using the new evaluation env with modified DB host to evaluate the LLM outputs.
+1. Change the databaes metafiles and livesqlbench_data.jsonl to the full version from [huggingface](https://huggingface.co/datasets/birdsql/livesqlbench-base-full-v1).
+2. Use the new data to generate the prompts and then use the new generated prompt get LLM outputs and then postprocess it.
+3. When running the evaluation, you need to set the database host to `livesqlbench_postgresql_base_full`:
+```bash
+docker compose exec so_eval_env bash
+cd run
+jsonl_file=<path_to_the_full_set_postprocessed_jsonl_file>
+python3 /app/src/evaluation.py --jsonl_file $jsonl_file  --db_host "postgresql_base_full"
+```
 
 
 ## 📊 Model Performance on LiveSQLBench
