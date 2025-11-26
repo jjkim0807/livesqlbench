@@ -49,7 +49,7 @@ def save_report_and_status(report_file_path,
     try:
         with open(report_file_path, "w") as report_file:
             report_file.write("--------------------------------------------------\n")
-            report_file.write("BIRD CRITIC Stack Overflow Result Statistics (Postgres, Multi-Thread):\n")
+            report_file.write("BIRD-Interact Statistics (Postgres, Multi-Thread):\n")
             report_file.write(f"Number of Instances: {total_instances}\n")
             report_file.write(f"Number of Execution Errors: {number_of_execution_errors}\n")
             report_file.write(f"Number of Timeouts: {number_of_timeouts}\n")
@@ -60,6 +60,8 @@ def save_report_and_status(report_file_path,
             report_file.write(f"Total Errors: {total_errors}\n")
             report_file.write(f"Overall Accuracy: {overall_accuracy:.2f}%\n")
             report_file.write(f"Timestamp: {timestamp}\n\n")
+
+            print(f"Overall Accuracy: {overall_accuracy:.2f}%\n")
 
             # Go through each question result
             for i, q_res in enumerate(question_test_case_results):

@@ -16,6 +16,7 @@ from logger import (
     configure_logger,
     NullLogger,
 )
+from db_config import set_global_db_config
 from utils import load_jsonl, split_field, save_report_and_status
 from db_utils import (
     perform_query_on_postgresql_databases,
@@ -242,9 +243,13 @@ def process_one_instance(data_item, ephemeral_db_queues, args, global_stats_lock
     global total_passed_instances, number_error_unexpected_pass
 
     instance_id = data_item["instance_id"]
-    log_filename = os.path.splitext(args.jsonl_file)[0] + f"_instance_{instance_id}.log"
+    base_name = os.path.splitext(os.path.basename(args.jsonl_file))[0]
+    output_dir = args.output_dir if getattr(args, "output_dir", None) else os.path.dirname(args.jsonl_file)
+    experiment_dir = os.path.join(output_dir, base_name)
+    os.makedirs(experiment_dir, exist_ok=True)
 
     if args.logging == "true":
+        log_filename = os.path.join(experiment_dir, f"instance_{instance_id}.log")
         logger = configure_logger(log_filename)
     else:
         logger = NullLogger()
@@ -283,12 +288,17 @@ def process_one_instance(data_item, ephemeral_db_queues, args, global_stats_lock
     clean_up_sql = split_field(data_item, "clean_up_sql")
     test_cases = data_item.get("test_cases", [])
     conditions = data_item.get("conditions", {})
+    category = data_item.get("category", "Query")
     kwargs = {}
-    if not test_cases:
+    if category == "Query":
         test_cases = [TEST_CASE_DEFAULT]
         kwargs = {"conditions": conditions} 
         # The default test case requires the usage of `conditions`, e.g. `order` field to decide whether order of execution results will be evaluted, and if true, that means the execution results' order matters. Otherwise, the execution results' order does not matter. 
         # But for the customized test cases, we dont need this `conditions` field, since test cases are designed case by case.
+    else:
+        # Management queries should have test cases
+        if not test_cases:
+            logger.warning(f"No test cases for instance {instance_id} with category {category}")
 
     evaluation_phase_execution_error = False
     evaluation_phase_timeout_error = False
@@ -436,7 +446,7 @@ def main():
         help="Limit the number of instances to process.",
     )
     parser.add_argument(
-        "--num_threads", type=int, default=2, help="Number of parallel threads to use."
+        "--num_threads", type=int, default=4, help="Number of parallel threads to use."
     )
     parser.add_argument(
         "--logging",
@@ -444,7 +454,27 @@ def main():
         default="false",
         help="Enable or disable per-instance logging ('true' or 'false').",
     )
+    parser.add_argument(
+        "--db_host",
+        type=str,
+        default="livesqlbench_postgresql",
+        help="Host of the database to use.",
+    )
+    parser.add_argument(
+        "--db_port",
+        type=int,
+        default=5432,
+        help="Port of the database to use.",
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default=None,
+        help="Directory to write reports and logs. Defaults next to the input JSONL file.",
+    )
     args = parser.parse_args()
+
+    set_global_db_config(host=args.db_host, port=args.db_port)
 
     data_list = load_jsonl(args.jsonl_file)
 
@@ -465,9 +495,13 @@ def main():
         if "selected_database" in d:
             all_db_names.add(d["selected_database"])
 
-    # summary logger
-    base_output_folder = os.path.splitext(args.jsonl_file)[0]
-    ephemeral_db_log_filename = f"{base_output_folder}_multi_thread.log"
+    # summary logger & output locations
+    base_name = os.path.splitext(os.path.basename(args.jsonl_file))[0]
+    output_dir = args.output_dir if args.output_dir else os.path.dirname(args.jsonl_file)
+    os.makedirs(output_dir, exist_ok=True)
+    experiment_dir = os.path.join(output_dir, base_name)
+    os.makedirs(experiment_dir, exist_ok=True)
+    ephemeral_db_log_filename = os.path.join(experiment_dir, "multi_thread.log")
     ephemeral_db_logger = configure_logger(ephemeral_db_log_filename)
     ephemeral_db_logger.info(
         f"=== Starting Multi-Thread Evaluation with {args.num_threads} threads ==="
@@ -536,7 +570,14 @@ def main():
         else 0.0
     )
     timestamp = datetime.now().isoformat(sep=" ", timespec="microseconds")
-    report_file_path = f"{base_output_folder}_report.txt"
+    report_file_path = os.path.join(experiment_dir, "report.txt")
+
+    # Sort data_list and results by instance_id to make sure they are in the same order
+    data_list = sorted(data_list, key=lambda x: x["instance_id"])
+    question_test_case_results = sorted(question_test_case_results, key=lambda x: x["instance_id"])
+    # check if the order is the same
+    for i in range(len(data_list)):
+        assert data_list[i]["instance_id"] == question_test_case_results[i]["instance_id"], f"The order of data_list and question_test_case_results is not the same at index {i}; data_list: {data_list[i]['instance_id']}, question_test_case_results: {question_test_case_results[i]['instance_id']}"
 
     # Generate the report + update data_list
     save_report_and_status(
@@ -555,7 +596,7 @@ def main():
 
     # If logging enabled, output JSONL with status
     if args.logging == "true":
-        output_jsonl_file = f"{base_output_folder}_output_with_status.jsonl"
+        output_jsonl_file = os.path.join(experiment_dir, "output_with_status.jsonl")
         with open(output_jsonl_file, "w") as f:
             for i, data in enumerate(data_list):
                 data["status"] = question_test_case_results[i]["status"]

@@ -9,28 +9,16 @@ from logger import (
     log_section_footer,
     PrintLogger
 )
-
-
-HOST = "livesqlbench_postgresql"
-PORT = 5432
+from db_config import get_db_config
 
 _postgresql_pools = {}
-
-DEFAULT_DB_CONFIG = {
-    "minconn": 1,
-    "maxconn": 5,
-    "user": "root",
-    "password": "123123",
-    "host": HOST,
-    "port": PORT,
-}
 
 def _get_or_init_pool(db_name):
     """
     Returns a connection pool for the given database name, creating one if it does not exist.
     """
     if db_name not in _postgresql_pools:
-        config = DEFAULT_DB_CONFIG.copy()
+        config = get_db_config().copy()
         config.update({"dbname": db_name})
         _postgresql_pools[db_name] = SimpleConnectionPool(
             config["minconn"],
@@ -143,9 +131,9 @@ def reset_and_restore_database(db_name, pg_password, logger):
     3) dropdb
     4) createdb --template ...
     """
-    pg_host = HOST
-    pg_port = PORT
-    pg_user = "root"
+    pg_host = get_db_config()["host"]
+    pg_port = get_db_config()["port"]
+    pg_user = get_db_config()["user"]
 
     env_vars = os.environ.copy()
     env_vars["PGPASSWORD"] = pg_password
@@ -213,9 +201,9 @@ def create_ephemeral_db_copies(base_db_names, num_copies, pg_password, logger):
     For each base database in base_db_names, create `num_copies` ephemeral DB copies 
     from base_db_template. Return a dict: {base_db: [ephemeral1, ephemeral2, ...], ...}
     """
-    pg_host = HOST
-    pg_port = PORT
-    pg_user = "root"
+    pg_host = get_db_config()["host"]
+    pg_port = get_db_config()["port"]
+    pg_user = get_db_config()["user"]
     env_vars = os.environ.copy()
     env_vars["PGPASSWORD"] = pg_password
 
@@ -261,9 +249,9 @@ def drop_ephemeral_dbs(ephemeral_db_pool_dict, pg_password, logger):
     """
     Delete all ephemeral databases created during the script execution.
     """
-    pg_host = HOST
-    pg_port = PORT
-    pg_user = "root"
+    pg_host = get_db_config()["host"]
+    pg_port = get_db_config()["port"]
+    pg_user = get_db_config()["user"]
     env_vars = os.environ.copy()
     env_vars["PGPASSWORD"] = pg_password
 
