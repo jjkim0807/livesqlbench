@@ -3,11 +3,16 @@ Global database configuration settings.
 This file contains the centralized database configuration that should be used across the codebase.
 """
 
+import os
+
 # Default settings
 DEFAULT_HOST = 'livesqlbench_postgresql'  # Default container hostname
 DEFAULT_PORT = 5432
 DEFAULT_USER = 'root'
-DEFAULT_PASSWORD = '123123'
+DEFAULT_PASSWORD = (
+    os.getenv('LIVESQLBENCH_PG_PASSWORD')
+    or os.getenv('POSTGRES_PASSWORD')
+)
 DEFAULT_MINCONN = 1
 DEFAULT_MAXCONN = 5
 

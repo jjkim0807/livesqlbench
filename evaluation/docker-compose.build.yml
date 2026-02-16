@@ -1,4 +1,4 @@
-version: "3.8"
+version: "3.3"
 
 services:
   postgresql:
@@ -8,12 +8,12 @@ services:
     container_name: livesqlbench_postgresql
     environment:
       POSTGRES_USER: root
-      POSTGRES_PASSWORD: 123123
+      POSTGRES_PASSWORD: ${LIVESQLBENCH_PG_PASSWORD:-123123}
       TZ: "Asia/Hong_Kong"
     volumes:
       - postgresql_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
 
   postgresql_base_full:
     build:
@@ -22,12 +22,12 @@ services:
     container_name: livesqlbench_postgresql_base_full
     environment:
       POSTGRES_USER: root
-      POSTGRES_PASSWORD: 123123
+      POSTGRES_PASSWORD: ${LIVESQLBENCH_PG_PASSWORD:-123123}
       TZ: "Asia/Hong_Kong"
     volumes:
       - postgresql_base_full_data:/var/lib/postgresql/data
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
 
   so_eval_env:
     build:

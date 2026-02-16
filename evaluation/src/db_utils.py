@@ -1,17 +1,15 @@
 # db_utils.py
 import os
 import subprocess
+
 import psycopg2
+from db_config import get_db_config
+from logger import PrintLogger, log_section_footer, log_section_header
 from psycopg2 import OperationalError
 from psycopg2.pool import SimpleConnectionPool
-from logger import (
-    log_section_header,
-    log_section_footer,
-    PrintLogger
-)
-from db_config import get_db_config
 
 _postgresql_pools = {}
+
 
 def _get_or_init_pool(db_name):
     """
@@ -31,11 +29,12 @@ def _get_or_init_pool(db_name):
         )
     return _postgresql_pools[db_name]
 
+
 def perform_query_on_postgresql_databases(query, db_name, conn=None):
     """
     Executes the given query on the specified database, returns (result, conn).
     Automatically commits if the query is recognized as a write operation.
-    
+
     Returns:
         (result, conn):
             result: list of tuples, each tuple is a row of the result
@@ -91,6 +90,7 @@ def perform_query_on_postgresql_databases(query, db_name, conn=None):
             # pool.putconn(conn)
             pass
 
+
 def close_postgresql_connection(db_name, conn):
     """
     Release a connection back to the pool when you are done with it.
@@ -98,6 +98,7 @@ def close_postgresql_connection(db_name, conn):
     if db_name in _postgresql_pools:
         pool = _postgresql_pools[db_name]
         pool.putconn(conn)
+
 
 def close_all_postgresql_pools():
     """
@@ -107,6 +108,7 @@ def close_all_postgresql_pools():
         pool.closeall()
     _postgresql_pools.clear()
 
+
 def close_postgresql_pool(db_name):
     """
     Close the pool for a specific db_name and remove its reference.
@@ -115,6 +117,7 @@ def close_postgresql_pool(db_name):
         pool = _postgresql_pools.pop(db_name)
         pool.closeall()
 
+
 def get_connection_for_phase(db_name, logger):
     """
     Acquire a new connection (borrowed from the connection pool) for a specific phase.
@@ -122,6 +125,7 @@ def get_connection_for_phase(db_name, logger):
     logger.info(f"Acquiring dedicated connection for phase on db: {db_name}")
     result, conn = perform_query_on_postgresql_databases("SELECT 1", db_name, conn=None)
     return conn
+
 
 def reset_and_restore_database(db_name, pg_password, logger):
     """
@@ -137,7 +141,7 @@ def reset_and_restore_database(db_name, pg_password, logger):
 
     env_vars = os.environ.copy()
     env_vars["PGPASSWORD"] = pg_password
-    base_db_name = db_name.split('_process_')[0]
+    base_db_name = db_name.split("_process_")[0]
     template_db_name = f"{base_db_name}_template"
 
     logger.info(f"Resetting database {db_name} using template {template_db_name}")
@@ -149,56 +153,100 @@ def reset_and_restore_database(db_name, pg_password, logger):
     # 2) Terminate existing connections
     terminate_command = [
         "psql",
-        "-h", pg_host,
-        "-p", str(pg_port),
-        "-U", pg_user,
-        "-d", "postgres",
+        "-h",
+        pg_host,
+        "-p",
+        str(pg_port),
+        "-U",
+        pg_user,
+        "-d",
+        "postgres",
         "-c",
         f"""
         SELECT pg_terminate_backend(pid)
         FROM pg_stat_activity
         WHERE datname = '{db_name}' AND pid <> pg_backend_pid();
-        """
+        """,
     ]
-    subprocess.run(
-        terminate_command,
-        check=True,
-        env=env_vars,
-        timeout=60,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
-    )
-    logger.info(f"All connections to database {db_name} have been terminated.")
+    try:
+        subprocess.run(
+            terminate_command,
+            check=True,
+            env=env_vars,
+            timeout=60,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        logger.info(f"All connections to database {db_name} have been terminated.")
+    except subprocess.CalledProcessError as e:
+        logger.warning(
+            "Failed to terminate connections for %s (continuing): %s",
+            db_name,
+            e,
+        )
 
     # 3) dropdb
-    drop_command = [
-        "dropdb",
-        "--if-exists",
-        "-h", pg_host,
-        "-p", str(pg_port),
-        "-U", pg_user,
-        db_name,
-    ]
-    subprocess.run(drop_command, check=True, env=env_vars, timeout=60,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    logger.info(f"Database {db_name} dropped if it existed.")
+        drop_command = [
+            "dropdb",
+            "--if-exists",
+            "-h",
+            pg_host,
+            "-p",
+            str(pg_port),
+            "-U",
+            pg_user,
+            db_name,
+        ]
+        try:
+            subprocess.run(
+                drop_command,
+                check=True,
+                env=env_vars,
+                timeout=60,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            logger.info(f"Database {db_name} dropped if it existed.")
+        except subprocess.CalledProcessError as e:
+            logger.warning("Failed to drop database %s (continuing): %s", db_name, e)
 
     # 4) createdb --template=xxx_template
     create_command = [
         "createdb",
-        "-h", pg_host,
-        "-p", str(pg_port),
-        "-U", pg_user,
+        "-h",
+        pg_host,
+        "-p",
+        str(pg_port),
+        "-U",
+        pg_user,
         db_name,
-        "--template", template_db_name
+        "--template",
+        template_db_name,
     ]
-    subprocess.run(create_command, check=True, env=env_vars, timeout=60,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    logger.info(f"Database {db_name} created from template {template_db_name} successfully.")
+    try:
+        subprocess.run(
+            create_command,
+            check=True,
+            env=env_vars,
+            timeout=60,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        logger.info(
+            f"Database {db_name} created from template {template_db_name} successfully."
+        )
+    except subprocess.CalledProcessError as e:
+        logger.warning(
+            "Failed to create database %s from template %s (continuing): %s",
+            db_name,
+            template_db_name,
+            e,
+        )
+
 
 def create_ephemeral_db_copies(base_db_names, num_copies, pg_password, logger):
     """
-    For each base database in base_db_names, create `num_copies` ephemeral DB copies 
+    For each base database in base_db_names, create `num_copies` ephemeral DB copies
     from base_db_template. Return a dict: {base_db: [ephemeral1, ephemeral2, ...], ...}
     """
     pg_host = get_db_config()["host"]
@@ -213,37 +261,60 @@ def create_ephemeral_db_copies(base_db_names, num_copies, pg_password, logger):
         base_template = f"{base_db}_template"
         ephemeral_db_pool[base_db] = []
 
-        for i in range(1, num_copies+1):
+        for i in range(1, num_copies + 1):
             ephemeral_name = f"{base_db}_process_{i}"
             # If it already exists, drop it first
             drop_cmd = [
-                "dropdb", "--if-exists",
-                "-h", pg_host,
-                "-p", str(pg_port),
-                "-U", pg_user,
-                ephemeral_name
+                "dropdb",
+                "--if-exists",
+                "-h",
+                pg_host,
+                "-p",
+                str(pg_port),
+                "-U",
+                pg_user,
+                ephemeral_name,
             ]
-            subprocess.run(drop_cmd, check=False, env=env_vars,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(
+                drop_cmd,
+                check=False,
+                env=env_vars,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
 
             # createdb
             create_cmd = [
                 "createdb",
-                "-h", pg_host,
-                "-p", str(pg_port),
-                "-U", pg_user,
+                "-h",
+                pg_host,
+                "-p",
+                str(pg_port),
+                "-U",
+                pg_user,
                 ephemeral_name,
-                "--template", base_template
+                "--template",
+                base_template,
             ]
-            logger.info(f"Creating ephemeral db {ephemeral_name} from {base_template}...")
-            subprocess.run(create_cmd, check=True, env=env_vars,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            logger.info(
+                f"Creating ephemeral db {ephemeral_name} from {base_template}..."
+            )
+            subprocess.run(
+                create_cmd,
+                check=True,
+                env=env_vars,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
 
             ephemeral_db_pool[base_db].append(ephemeral_name)
 
-        logger.info(f"For base_db={base_db}, ephemeral db list = {ephemeral_db_pool[base_db]}")
+        logger.info(
+            f"For base_db={base_db}, ephemeral db list = {ephemeral_db_pool[base_db]}"
+        )
 
     return ephemeral_db_pool
+
 
 def drop_ephemeral_dbs(ephemeral_db_pool_dict, pg_password, logger):
     """
@@ -262,14 +333,22 @@ def drop_ephemeral_dbs(ephemeral_db_pool_dict, pg_password, logger):
             drop_cmd = [
                 "dropdb",
                 "--if-exists",
-                "-h", pg_host,
-                "-p", str(pg_port),
-                "-U", pg_user,
-                ephemeral_db
+                "-h",
+                pg_host,
+                "-p",
+                str(pg_port),
+                "-U",
+                pg_user,
+                ephemeral_db,
             ]
             try:
-                subprocess.run(drop_cmd, check=True, env=env_vars,
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.run(
+                    drop_cmd,
+                    check=True,
+                    env=env_vars,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
             except subprocess.CalledProcessError as e:
                 logger.error(f"Failed to drop ephemeral db {ephemeral_db}: {e}")
 
@@ -300,7 +379,9 @@ def execute_queries(queries, db_name, conn, logger=None, section_title=""):
     for i, query in enumerate(queries):
         try:
             logger.info(f"Executing query {i+1}/{len(queries)}: {query}")
-            query_result, conn = perform_query_on_postgresql_databases(query, db_name, conn=conn)
+            query_result, conn = perform_query_on_postgresql_databases(
+                query, db_name, conn=conn
+            )
             logger.info(f"Query result: {query_result}")
 
         except psycopg2.errors.QueryCanceled as e:

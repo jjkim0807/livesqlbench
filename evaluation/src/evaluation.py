@@ -53,6 +53,13 @@ number_error_unexpected_pass = 0
 question_test_case_results = []
 
 
+def _get_pg_password() -> str:
+    return (
+        os.getenv("LIVESQLBENCH_PG_PASSWORD")
+        or os.getenv("POSTGRES_PASSWORD")
+    )
+
+
 def run_test_case(
     test_code, result, logger, idx, return_dict, conn, pred_sqls, sol_sqls, db_name, kwargs
 ):
@@ -511,7 +518,7 @@ def main():
     ephemeral_db_pool_dict = create_ephemeral_db_copies(
         base_db_names=all_db_names,
         num_copies=args.num_threads,
-        pg_password="123123",
+        pg_password=_get_pg_password(),
         logger=ephemeral_db_logger,
     )
 
@@ -609,7 +616,7 @@ def main():
     except Exception as e:
         print(f"Failed to close all PostgreSQL pools: {e}")
 
-    drop_ephemeral_dbs(ephemeral_db_pool_dict, "123123", ephemeral_db_logger)
+    drop_ephemeral_dbs(ephemeral_db_pool_dict, _get_pg_password(), ephemeral_db_logger)
     ephemeral_db_logger.info("All ephemeral databases have been dropped.")
 
 
